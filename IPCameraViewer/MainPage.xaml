@@ -1,0 +1,129 @@
+﻿<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="IPCameraViewer.MainPage"
+             Title="IP Camera Viewer - Multi Stream">
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="20" RowSpacing="15">
+
+        <!-- Add Stream Section -->
+        <VerticalStackLayout Grid.Row="0" Spacing="10">
+            <Label Text="Add Camera Stream:" 
+                   FontAttributes="Bold"
+                   FontSize="18"/>
+
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                <Entry x:Name="CameraUrlEntry"
+                       Placeholder="http://camera-url/stream"
+                       Text="http://220.233.144.165:8888/mjpg/video.mjpg"
+                       FontSize="16"/>
+
+                <Entry x:Name="CameraNameEntry"
+                       Grid.Column="1"
+                       Placeholder="Camera Name"
+                       WidthRequest="150"
+                       FontSize="16"/>
+
+                <Button Grid.Column="2"
+                        Text="Add Stream"
+                        Clicked="OnAddStreamClicked"
+                        WidthRequest="120"/>
+            </Grid>
+
+            <HorizontalStackLayout Spacing="10">
+                <Button Text="Stop All Streams" Clicked="OnStopAllClicked"/>
+                <Button Text="Clear All Logs" Clicked="OnClearAllLogsClicked"/>
+            </HorizontalStackLayout>
+        </VerticalStackLayout>
+
+        <!-- Streams Display -->
+        <ScrollView Grid.Row="1">
+            <CollectionView x:Name="StreamsCollection"
+                            SelectionMode="None">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Border Stroke="LightGray"
+                                StrokeThickness="2"
+                                Padding="10"
+                                Margin="0,0,0,15"
+                                BackgroundColor="Black">
+                            <VerticalStackLayout Spacing="10">
+
+                                <!-- Header with Camera Name and Controls -->
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                                    <Label Text="{Binding CameraName}"
+                                           FontAttributes="Bold"
+                                           FontSize="16"
+                                           TextColor="White"
+                                           VerticalOptions="Center"/>
+
+                                    <Button Grid.Column="1"
+                                            Text="Remove"
+                                            Clicked="OnRemoveStreamClicked"
+                                            CommandParameter="{Binding Id}"
+                                            WidthRequest="100"
+                                            BackgroundColor="OrangeRed"
+                                            TextColor="White"/>
+
+                                    <Button Grid.Column="2"
+                                            Text="{Binding IsRunning, Converter={StaticResource BoolToStartStopConverter}}"
+                                            Clicked="OnToggleStreamClicked"
+                                            CommandParameter="{Binding Id}"
+                                            WidthRequest="100"/>
+                                </Grid>
+
+                                <Label Text="{Binding Url}"
+                                       FontSize="12"
+                                       TextColor="LightGray"/>
+
+                                <!-- Stream Content -->
+                                <Grid ColumnDefinitions="*,300">
+                                    <Image Source="{Binding CurrentFrame}"
+                                           HeightRequest="300"
+                                           WidthRequest="400"
+                                           Aspect="AspectFit"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center"/>
+
+                                    <VerticalStackLayout Grid.Column="1" Spacing="8" Padding="10,0,0,0">
+                                        <Label Text="Detections" FontAttributes="Bold" TextColor="White"/>
+                                        <CollectionView ItemsSource="{Binding DetectionLogs}"
+                                                        HeightRequest="200"
+                                                        SelectionMode="None">
+                                            <CollectionView.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Label Text="{Binding .}" FontSize="11" TextColor="LightGray"/>
+                                                </DataTemplate>
+                                            </CollectionView.ItemTemplate>
+                                        </CollectionView>
+                                        <Button Text="Clear Logs" 
+                                                Clicked="OnClearStreamLogsClicked"
+                                                CommandParameter="{Binding Id}"/>
+                                    </VerticalStackLayout>
+                                </Grid>
+
+                                <!-- Metrics -->
+                                <HorizontalStackLayout Spacing="20">
+                                    <Label Text="{Binding Metrics}"
+                                           FontSize="13"
+                                           TextColor="White"/>
+                                    <Label Text="{Binding MotionStatus}"
+                                           TextColor="{Binding MotionColor}"
+                                           FontAttributes="Bold"
+                                           FontSize="13"/>
+                                </HorizontalStackLayout>
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </ScrollView>
+
+        <!-- Status Bar -->
+        <Label Grid.Row="2"
+               x:Name="StatusLabel"
+               Text="Ready"
+               FontSize="14"
+               TextColor="Gray"
+               HorizontalOptions="Center"/>
+    </Grid>
+</ContentPage>
