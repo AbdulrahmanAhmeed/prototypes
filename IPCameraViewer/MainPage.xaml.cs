@@ -19,47 +19,49 @@ namespace IPCameraViewer
         public MainPage()
         {
             InitializeComponent();
-			StreamsCollection.ItemsSource = this.streams;
+            this.StreamsCollection.ItemsSource = this.streams;
         }
 
         private void OnAddStreamClicked(object sender, EventArgs e)
         {
-            var cameraUrl = CameraUrlEntry.Text?.Trim();
-            var cameraName = CameraNameEntry.Text?.Trim();
+            var cameraUrl = this.CameraUrlEntry.Text?.Trim();
+            var cameraName = this.CameraNameEntry.Text?.Trim();
 
-            if (string.IsNullOrWhiteSpace(cameraUrl))
+            if (!string.IsNullOrWhiteSpace(cameraUrl))
+            {
+                if (string.IsNullOrWhiteSpace(cameraName))
+                {
+                    cameraName = $"Camera {this.streamIdCounter + 1}";
+                }
+
+                // Check if URL already exists
+                if (!this.streams.Any(s => s.Url == cameraUrl))
+                {
+                    var streamViewModel = new CameraStreamViewModel
+                    {
+                        Id = this.streamIdCounter++,
+                        CameraName = cameraName,
+                        Url = cameraUrl
+                    };
+
+                    this.streams.Add(streamViewModel);
+                    StartStream(streamViewModel);
+
+                    // Clear inputs
+                    this.CameraUrlEntry.Text = string.Empty;
+                    this.CameraNameEntry.Text = string.Empty;
+
+                    UpdateStatus($"Added stream: {cameraName}");
+                }
+                else
+                {
+                    DisplayAlert("Error", "This camera URL is already added.", "OK");
+                }
+            }
+            else
             {
                 DisplayAlert("Error", "Please enter a valid camera URL.", "OK");
-                return;
             }
-
-            if (string.IsNullOrWhiteSpace(cameraName))
-            {
-				cameraName = $"Camera {this.streamIdCounter + 1}";
-            }
-
-            // Check if URL already exists
-            if (this.streams.Any(s => s.Url == cameraUrl))
-            {
-                DisplayAlert("Error", "This camera URL is already added.", "OK");
-                return;
-            }
-
-            var streamViewModel = new CameraStreamViewModel
-            {
-				Id = this.streamIdCounter++,
-                CameraName = cameraName,
-                Url = cameraUrl
-            };
-
-			this.streams.Add(streamViewModel);
-            StartStream(streamViewModel);
-
-            // Clear inputs
-            CameraUrlEntry.Text = string.Empty;
-            CameraNameEntry.Text = string.Empty;
-
-            UpdateStatus($"Added stream: {cameraName}");
         }
 
         private void OnRemoveStreamClicked(object sender, EventArgs e)
@@ -70,7 +72,7 @@ namespace IPCameraViewer
                 if (stream != null)
                 {
                     StopStream(stream);
-					this.streams.Remove(stream);
+                    this.streams.Remove(stream);
                     UpdateStatus($"Removed stream: {stream.CameraName}");
                 }
             }
@@ -134,7 +136,9 @@ namespace IPCameraViewer
                 StopStream(streamViewModel);
             }
 
-            var streamer = new MjpegStreamer(new HttpClient());
+            // Convert percentage to ratio (1.5% = 0.015)
+            float thresholdRatio = (float)(streamViewModel.MotionThresholdPercent / 100.0);
+            var streamer = new MjpegStreamer(new HttpClient(), differenceThresholdRatio: thresholdRatio);
             streamer.FrameReceived += (jpegBytes) => OnFrameReceived(streamViewModel, jpegBytes);
             streamer.Metrics += (ratio, changed, total) => OnMetrics(streamViewModel, ratio, changed, total);
             streamer.MotionDetected += () => OnMotion(streamViewModel);
@@ -216,8 +220,24 @@ namespace IPCameraViewer
         {
             MainThread.BeginInvokeOnMainThread(() =>
             {
-				StatusLabel.Text = $"{message} | Active streams: {this.streams.Count(s => s.IsRunning)}/{this.streams.Count}";
+                this.StatusLabel.Text = $"{message} | Active streams: {this.streams.Count(s => s.IsRunning)}/{this.streams.Count}";
             });
+        }
+
+        private void OnThresholdChanged(object sender, ValueChangedEventArgs e)
+        {
+            if (sender is Slider slider && slider.BindingContext is CameraStreamViewModel streamViewModel)
+            {
+                // Update the view model property (binding will handle this, but we also need to update the streamer)
+                streamViewModel.MotionThresholdPercent = e.NewValue;
+                
+                // Update the streamer's threshold if it's running
+                if (streamViewModel.Streamer != null)
+                {
+                    float thresholdRatio = (float)(e.NewValue / 100.0);
+                    streamViewModel.Streamer.DifferenceThresholdRatio = thresholdRatio;
+                }
+            }
         }
 
         protected override void OnDisappearing()
