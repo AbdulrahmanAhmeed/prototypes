@@ -24,10 +24,12 @@ namespace IPCameraViewer.Services
 		{
 			get
 			{
+				float result;
 				lock (this.stateLock)
 				{
-					return this.differenceThresholdRatio;
+					result = this.differenceThresholdRatio;
 				}
+				return result;
 			}
 			set
 			{
