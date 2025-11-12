@@ -26,61 +26,61 @@ namespace IPCameraViewer.Models
         public int Id
         {
             get => this.id;
-            set => SetProperty(ref this.id, value);
+            set => this.SetProperty(ref this.id, value);
         }
 
         public string CameraName
         {
             get => this.cameraName;
-            set => SetProperty(ref this.cameraName, value);
+            set => this.SetProperty(ref this.cameraName, value);
         }
 
         public string Url
         {
             get => this.url;
-            set => SetProperty(ref this.url, value);
+            set => this.SetProperty(ref this.url, value);
         }
 
         public bool IsRunning
         {
             get => this.isRunning;
-            set => SetProperty(ref this.isRunning, value);
+            set => this.SetProperty(ref this.isRunning, value);
         }
 
         public ImageSource? CurrentFrame
         {
             get => this.currentFrame;
-            set => SetProperty(ref this.currentFrame, value);
+            set => this.SetProperty(ref this.currentFrame, value);
         }
 
         public string Metrics
         {
             get => this.metrics;
-            set => SetProperty(ref this.metrics, value);
+            set => this.SetProperty(ref this.metrics, value);
         }
 
         public string MotionStatus
         {
             get => this.motionStatus;
-            set => SetProperty(ref this.motionStatus, value);
+            set => this.SetProperty(ref this.motionStatus, value);
         }
 
         public Color MotionColor
         {
             get => this.motionColor;
-            set => SetProperty(ref this.motionColor, value);
+            set => this.SetProperty(ref this.motionColor, value);
         }
 
         public float LastRatio
         {
             get => this.lastRatio;
-            set => SetProperty(ref this.lastRatio, value);
+            set => this.SetProperty(ref this.lastRatio, value);
         }
 
         public double MotionThresholdPercent
         {
             get => this.motionThresholdPercent;
-            set => SetProperty(ref this.motionThresholdPercent, value);
+            set => this.SetProperty(ref this.motionThresholdPercent, value);
         }
 
         public ObservableCollection<string> DetectionLogs { get; } = new();
