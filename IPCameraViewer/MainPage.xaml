@@ -7,9 +7,19 @@
 
         <!-- Add Stream Section -->
         <VerticalStackLayout Grid.Row="0" Spacing="10">
-            <Label Text="Add Camera Stream:" 
-                   FontAttributes="Bold"
-                   FontSize="18"/>
+            <Grid ColumnDefinitions="*,Auto">
+                <Label Text="Add Camera Stream:" 
+                       FontAttributes="Bold"
+                       FontSize="18"
+                       VerticalOptions="Center"/>
+
+                <Button Grid.Column="1"
+                        Text="⚙ Settings"
+                        Clicked="OnSettingsClicked"
+                        WidthRequest="100"
+                        BackgroundColor="DodgerBlue"
+                        TextColor="White"/>
+            </Grid>
 
             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
                 <Entry x:Name="CameraUrlEntry"

@@ -4,6 +4,8 @@ using IPCameraViewer.Models;
 using System.Net.Http;
 using System.Collections.ObjectModel;
 using System.Linq;
+using Microsoft.Maui.Storage;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace IPCameraViewer
 {
@@ -33,11 +35,40 @@ namespace IPCameraViewer
 
 		private readonly ObservableCollection<CameraStreamViewModel> streams = new();
 		private int streamIdCounter = 0;
+		private IAudioService? audioService;
+		private const string SoundFilePathKey = "MotionDetectionSoundFilePath";
+		private const string SoundEnabledKey = "MotionDetectionSoundEnabled";
+		private const string DebugPlayMotionSoundCalled = "PlayMotionSound: Called";
+		private const string DebugAudioServiceNull = "PlayMotionSound: audioService is null, attempting to resolve";
+		private const string DebugServiceResolved = "PlayMotionSound: Service resolved: {0}";
+		private const string DebugApplicationNull = "PlayMotionSound: Application.Current or Handler is null";
+		private const string DebugAudioServiceStillNull = "PlayMotionSound: audioService is still null, cannot play sound";
+		private const string DebugSoundEnabled = "PlayMotionSound: Sound enabled: {0}";
+		private const string DebugSoundFilePath = "PlayMotionSound: Sound file path: {0}";
+		private const string DebugNoSoundFilePath = "PlayMotionSound: No sound file path configured";
+		private const string DebugFileNotExists = "PlayMotionSound: File does not exist: {0}";
+		private const string DebugCallingPlaySound = "PlayMotionSound: Calling audioService.PlaySound({0})";
+		private const string DebugExceptionFormat = "PlayMotionSound: Exception - {0}: {1}";
+		private const string DebugStackTrace = "PlayMotionSound: StackTrace: {0}";
 
         public MainPage()
         {
             InitializeComponent();
             this.StreamsCollection.ItemsSource = this.streams;
+            
+            // Try to get audio service after initialization
+            try
+            {
+                var app = Application.Current;
+                if (app?.Handler?.MauiContext?.Services != null)
+                {
+                    this.audioService = app.Handler.MauiContext.Services.GetService<IAudioService>();
+                }
+            }
+            catch
+            {
+                // audioService will remain null if it can't be resolved
+            }
         }
 
         private void OnAddStreamClicked(object sender, EventArgs e)
@@ -222,7 +253,80 @@ namespace IPCameraViewer
                 {
                     streamViewModel.DetectionLogs.RemoveAt(0);
                 }
+
+                // Play sound if enabled
+                this.PlayMotionSound();
             });
+        }
+
+        private void PlayMotionSound()
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine(MainPage.DebugPlayMotionSoundCalled);
+
+                // Try to get audio service if not already resolved
+                if (this.audioService == null)
+                {
+                    System.Diagnostics.Debug.WriteLine(MainPage.DebugAudioServiceNull);
+                    var app = Application.Current;
+                    if (app?.Handler?.MauiContext?.Services != null)
+                    {
+                        this.audioService = app.Handler.MauiContext.Services.GetService<IAudioService>();
+                        System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugServiceResolved, this.audioService != null));
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine(MainPage.DebugApplicationNull);
+                    }
+                }
+
+                // If still null, can't play sound
+                if (this.audioService == null)
+                {
+                    System.Diagnostics.Debug.WriteLine(MainPage.DebugAudioServiceStillNull);
+                    return;
+                }
+
+                // Check if sound is enabled
+                bool isSoundEnabled = Preferences.Get(MainPage.SoundEnabledKey, true);
+                System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugSoundEnabled, isSoundEnabled));
+                if (!isSoundEnabled)
+                {
+                    return;
+                }
+
+                // Get the sound file path
+                string? soundFilePath = Preferences.Get(MainPage.SoundFilePathKey, MainPage.EmptyString);
+                System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugSoundFilePath, soundFilePath ?? "(null)"));
+                if (string.IsNullOrEmpty(soundFilePath))
+                {
+                    System.Diagnostics.Debug.WriteLine(MainPage.DebugNoSoundFilePath);
+                    return;
+                }
+
+                if (!File.Exists(soundFilePath))
+                {
+                    System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugFileNotExists, soundFilePath));
+                    return;
+                }
+
+                System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugCallingPlaySound, soundFilePath));
+                // Play the sound
+                this.audioService.PlaySound(soundFilePath);
+            }
+            catch (Exception ex)
+            {
+                // Log error for debugging (can be removed in production)
+                System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugExceptionFormat, ex.GetType().Name, ex.Message));
+                System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugStackTrace, ex.StackTrace));
+            }
+        }
+
+        private async void OnSettingsClicked(object sender, EventArgs e)
+        {
+            var settingsPage = new SettingsPage();
+            await Navigation.PushModalAsync(settingsPage);
         }
 
         private void OnError(CameraStreamViewModel streamViewModel, string message)
