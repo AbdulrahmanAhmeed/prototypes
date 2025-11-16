@@ -282,38 +282,41 @@ namespace IPCameraViewer
                 }
 
                 // If still null, can't play sound
-                if (this.audioService == null)
+                if (this.audioService != null)
+                {
+                    // Check if sound is enabled
+                    bool isSoundEnabled = Preferences.Get(MainPage.SoundEnabledKey, true);
+                    System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugSoundEnabled, isSoundEnabled));
+                    
+                    if (isSoundEnabled)
+                    {
+                        // Get the sound file path
+                        string? soundFilePath = Preferences.Get(MainPage.SoundFilePathKey, MainPage.EmptyString);
+                        System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugSoundFilePath, soundFilePath ?? "(null)"));
+                        
+                        if (!string.IsNullOrEmpty(soundFilePath) && File.Exists(soundFilePath))
+                        {
+                            System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugCallingPlaySound, soundFilePath));
+                            // Play the sound
+                            this.audioService.PlaySound(soundFilePath);
+                        }
+                        else
+                        {
+                            if (string.IsNullOrEmpty(soundFilePath))
+                            {
+                                System.Diagnostics.Debug.WriteLine(MainPage.DebugNoSoundFilePath);
+                            }
+                            else
+                            {
+                                System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugFileNotExists, soundFilePath));
+                            }
+                        }
+                    }
+                }
+                else
                 {
                     System.Diagnostics.Debug.WriteLine(MainPage.DebugAudioServiceStillNull);
-                    return;
                 }
-
-                // Check if sound is enabled
-                bool isSoundEnabled = Preferences.Get(MainPage.SoundEnabledKey, true);
-                System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugSoundEnabled, isSoundEnabled));
-                if (!isSoundEnabled)
-                {
-                    return;
-                }
-
-                // Get the sound file path
-                string? soundFilePath = Preferences.Get(MainPage.SoundFilePathKey, MainPage.EmptyString);
-                System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugSoundFilePath, soundFilePath ?? "(null)"));
-                if (string.IsNullOrEmpty(soundFilePath))
-                {
-                    System.Diagnostics.Debug.WriteLine(MainPage.DebugNoSoundFilePath);
-                    return;
-                }
-
-                if (!File.Exists(soundFilePath))
-                {
-                    System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugFileNotExists, soundFilePath));
-                    return;
-                }
-
-                System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugCallingPlaySound, soundFilePath));
-                // Play the sound
-                this.audioService.PlaySound(soundFilePath);
             }
             catch (Exception ex)
             {

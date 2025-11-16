@@ -93,36 +93,37 @@ namespace IPCameraViewer
 
         private void OnTestSoundClicked(object sender, EventArgs e)
         {
-            if (string.IsNullOrEmpty(this.selectedFilePath) || !File.Exists(this.selectedFilePath))
+            if (!string.IsNullOrEmpty(this.selectedFilePath) && File.Exists(this.selectedFilePath))
             {
-                this.DisplayAlert(SettingsPage.ErrorTitle, SettingsPage.NoValidSoundFileMessage, SettingsPage.OkButtonText);
-                return;
-            }
-
-            try
-            {
-                var app = Application.Current;
-                if (app?.Handler?.MauiContext?.Services != null)
+                try
                 {
-                    var audioService = app.Handler.MauiContext.Services.GetService<IAudioService>();
-                    if (audioService != null)
+                    var app = Application.Current;
+                    if (app?.Handler?.MauiContext?.Services != null)
                     {
-                        audioService.PlaySound(this.selectedFilePath);
-                        this.DisplayAlert(SettingsPage.SuccessTitle, SettingsPage.SoundTestSuccessMessage, SettingsPage.OkButtonText);
+                        var audioService = app.Handler.MauiContext.Services.GetService<IAudioService>();
+                        if (audioService != null)
+                        {
+                            audioService.PlaySound(this.selectedFilePath);
+                            this.DisplayAlert(SettingsPage.SuccessTitle, SettingsPage.SoundTestSuccessMessage, SettingsPage.OkButtonText);
+                        }
+                        else
+                        {
+                            this.DisplayAlert(SettingsPage.ErrorTitle, SettingsPage.AudioServiceNotAvailableMessage, SettingsPage.OkButtonText);
+                        }
                     }
                     else
                     {
-                        this.DisplayAlert(SettingsPage.ErrorTitle, SettingsPage.AudioServiceNotAvailableMessage, SettingsPage.OkButtonText);
+                        this.DisplayAlert(SettingsPage.ErrorTitle, SettingsPage.CannotAccessAudioServiceMessage, SettingsPage.OkButtonText);
                     }
                 }
-                else
+                catch (Exception ex)
                 {
-                    this.DisplayAlert(SettingsPage.ErrorTitle, SettingsPage.CannotAccessAudioServiceMessage, SettingsPage.OkButtonText);
+                    this.DisplayAlert(SettingsPage.ErrorTitle, string.Format(SettingsPage.FailedToPlaySoundFormat, ex.Message), SettingsPage.OkButtonText);
                 }
             }
-            catch (Exception ex)
+            else
             {
-                this.DisplayAlert(SettingsPage.ErrorTitle, string.Format(SettingsPage.FailedToPlaySoundFormat, ex.Message), SettingsPage.OkButtonText);
+                this.DisplayAlert(SettingsPage.ErrorTitle, SettingsPage.NoValidSoundFileMessage, SettingsPage.OkButtonText);
             }
         }
 

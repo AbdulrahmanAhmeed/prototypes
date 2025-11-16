@@ -30,65 +30,68 @@ namespace IPCameraViewer.Platforms.Windows
 
         public void PlaySound(string? filePath)
         {
-            if (string.IsNullOrWhiteSpace(filePath))
+            if (!string.IsNullOrWhiteSpace(filePath))
+            {
+                try
+                {
+                    if (File.Exists(filePath))
+                    {
+                        // Convert to full path to avoid issues
+                        string fullPath = Path.GetFullPath(filePath);
+                        if (!string.IsNullOrEmpty(fullPath))
+                        {
+                            System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugAttemptingToPlay, fullPath));
+
+                            // Ensure path uses backslashes and is properly formatted for Windows API
+                            string normalizedPath = fullPath.Replace('/', '\\');
+                            
+                            // Call PlaySound with SND_FILENAME | SND_ASYNC
+                            // SND_ASYNC plays asynchronously without blocking
+                            uint flags = AudioService.SND_FILENAME | AudioService.SND_ASYNC;
+                            bool result = AudioService.PlaySoundWin32(normalizedPath, IntPtr.Zero, flags);
+                            System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugPlaySoundReturned, result, normalizedPath));
+                            
+                            if (!result)
+                            {
+                                // Get last error if available
+                                int error = Marshal.GetLastWin32Error();
+                                System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugPlaySoundFailed, error));
+                            }
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine(AudioService.DebugCouldNotGetFullPath);
+                        }
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugFileNotExists, filePath));
+                    }
+                }
+                catch (DllNotFoundException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugDllNotFoundException, ex.Message));
+                }
+                catch (EntryPointNotFoundException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugEntryPointNotFoundException, ex.Message));
+                }
+                catch (BadImageFormatException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugBadImageFormatException, ex.Message));
+                }
+                catch (AccessViolationException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugAccessViolationException, ex.Message));
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugExceptionFormat, ex.GetType().Name, ex.Message));
+                }
+            }
+            else
             {
                 System.Diagnostics.Debug.WriteLine(AudioService.DebugFilePathNull);
-                return;
-            }
-
-            try
-            {
-                if (!File.Exists(filePath))
-                {
-                    System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugFileNotExists, filePath));
-                    return;
-                }
-
-                // Convert to full path to avoid issues
-                string fullPath = Path.GetFullPath(filePath);
-                if (string.IsNullOrEmpty(fullPath))
-                {
-                    System.Diagnostics.Debug.WriteLine(AudioService.DebugCouldNotGetFullPath);
-                    return;
-                }
-
-                System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugAttemptingToPlay, fullPath));
-
-                // Ensure path uses backslashes and is properly formatted for Windows API
-                string normalizedPath = fullPath.Replace('/', '\\');
-                
-                // Call PlaySound with SND_FILENAME | SND_ASYNC
-                // SND_ASYNC plays asynchronously without blocking
-                uint flags = AudioService.SND_FILENAME | AudioService.SND_ASYNC;
-                bool result = AudioService.PlaySoundWin32(normalizedPath, IntPtr.Zero, flags);
-                System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugPlaySoundReturned, result, normalizedPath));
-                
-                if (!result)
-                {
-                    // Get last error if available
-                    int error = Marshal.GetLastWin32Error();
-                    System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugPlaySoundFailed, error));
-                }
-            }
-            catch (DllNotFoundException ex)
-            {
-                System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugDllNotFoundException, ex.Message));
-            }
-            catch (EntryPointNotFoundException ex)
-            {
-                System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugEntryPointNotFoundException, ex.Message));
-            }
-            catch (BadImageFormatException ex)
-            {
-                System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugBadImageFormatException, ex.Message));
-            }
-            catch (AccessViolationException ex)
-            {
-                System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugAccessViolationException, ex.Message));
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine(string.Format(AudioService.DebugExceptionFormat, ex.GetType().Name, ex.Message));
             }
         }
     }
