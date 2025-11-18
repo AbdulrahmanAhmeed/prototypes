@@ -36,8 +36,6 @@ namespace IPCameraViewer
 		private readonly ObservableCollection<CameraStreamViewModel> streams = new();
 		private int streamIdCounter = 0;
 		private IAudioService? audioService;
-		private const string SoundFilePathKey = "MotionDetectionSoundFilePath";
-		private const string SoundEnabledKey = "MotionDetectionSoundEnabled";
 		private const string DebugPlayMotionSoundCalled = "PlayMotionSound: Called";
 		private const string DebugAudioServiceNull = "PlayMotionSound: audioService is null, attempting to resolve";
 		private const string DebugServiceResolved = "PlayMotionSound: Service resolved: {0}";
@@ -255,15 +253,22 @@ namespace IPCameraViewer
                 }
 
                 // Play sound if enabled
-                this.PlayMotionSound();
+                this.PlayMotionSound(streamViewModel);
             });
         }
 
-        private void PlayMotionSound()
+        private void PlayMotionSound(CameraStreamViewModel streamViewModel)
         {
             try
             {
                 System.Diagnostics.Debug.WriteLine(MainPage.DebugPlayMotionSoundCalled);
+
+                // Check if sound is enabled for this camera
+                if (streamViewModel == null || !streamViewModel.SoundEnabled)
+                {
+                    System.Diagnostics.Debug.WriteLine("PlayMotionSound: Sound disabled for this camera");
+                    return;
+                }
 
                 // Try to get audio service if not already resolved
                 if (this.audioService == null)
@@ -284,32 +289,27 @@ namespace IPCameraViewer
                 // If still null, can't play sound
                 if (this.audioService != null)
                 {
-                    // Check if sound is enabled
-                    bool isSoundEnabled = Preferences.Get(MainPage.SoundEnabledKey, true);
-                    System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugSoundEnabled, isSoundEnabled));
+                    // Get the camera-specific sound file path
+                    string? soundFilePath = streamViewModel.SoundFilePath;
+                    System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugSoundFilePath, soundFilePath ?? "(null)"));
                     
-                    if (isSoundEnabled)
+                    if (!string.IsNullOrEmpty(soundFilePath) && File.Exists(soundFilePath))
                     {
-                        // Get the sound file path
-                        string? soundFilePath = Preferences.Get(MainPage.SoundFilePathKey, MainPage.EmptyString);
-                        System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugSoundFilePath, soundFilePath ?? "(null)"));
-                        
-                        if (!string.IsNullOrEmpty(soundFilePath) && File.Exists(soundFilePath))
+                        // Get the camera-specific volume (default to 1.0 if not set)
+                        double volume = streamViewModel.SoundVolume;
+                        System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugCallingPlaySound, soundFilePath));
+                        // Play the sound with camera-specific volume
+                        this.audioService.PlaySound(soundFilePath, volume);
+                    }
+                    else
+                    {
+                        if (string.IsNullOrEmpty(soundFilePath))
                         {
-                            System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugCallingPlaySound, soundFilePath));
-                            // Play the sound
-                            this.audioService.PlaySound(soundFilePath);
+                            System.Diagnostics.Debug.WriteLine(MainPage.DebugNoSoundFilePath);
                         }
                         else
                         {
-                            if (string.IsNullOrEmpty(soundFilePath))
-                            {
-                                System.Diagnostics.Debug.WriteLine(MainPage.DebugNoSoundFilePath);
-                            }
-                            else
-                            {
-                                System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugFileNotExists, soundFilePath));
-                            }
+                            System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugFileNotExists, soundFilePath));
                         }
                     }
                 }
@@ -324,12 +324,6 @@ namespace IPCameraViewer
                 System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugExceptionFormat, ex.GetType().Name, ex.Message));
                 System.Diagnostics.Debug.WriteLine(string.Format(MainPage.DebugStackTrace, ex.StackTrace));
             }
-        }
-
-        private async void OnSettingsClicked(object sender, EventArgs e)
-        {
-            var settingsPage = new SettingsPage();
-            await Navigation.PushModalAsync(settingsPage);
         }
 
         private void OnError(CameraStreamViewModel streamViewModel, string message)
@@ -361,6 +355,101 @@ namespace IPCameraViewer
                 {
                     float thresholdRatio = (float)(e.NewValue / 100.0);
                     streamViewModel.Streamer.DifferenceThresholdRatio = thresholdRatio;
+                }
+            }
+        }
+
+        private void OnVolumeChanged(object sender, ValueChangedEventArgs e)
+        {
+            if (sender is Slider slider && slider.BindingContext is CameraStreamViewModel streamViewModel)
+            {
+                // Update the view model property (binding and persistence will be handled by the property setter)
+                streamViewModel.SoundVolume = e.NewValue;
+            }
+        }
+
+        private void OnSoundEnabledToggled(object sender, ToggledEventArgs e)
+        {
+            if (sender is Switch switchControl && switchControl.BindingContext is CameraStreamViewModel streamViewModel)
+            {
+                streamViewModel.SoundEnabled = e.Value;
+            }
+        }
+
+        private async void OnSelectSoundFileClicked(object sender, EventArgs e)
+        {
+            if (sender is Button button && button.CommandParameter is int id)
+            {
+                var stream = this.streams.FirstOrDefault(s => s.Id == id);
+                if (stream != null)
+                {
+                    try
+                    {
+                        var customFileType = new FilePickerFileType(
+                            new Dictionary<DevicePlatform, IEnumerable<string>>
+                            {
+                                { DevicePlatform.WinUI, new[] { ".wav" } }
+                            });
+
+                        var options = new PickOptions
+                        {
+                            PickerTitle = "Select a WAV file for this camera",
+                            FileTypes = customFileType
+                        };
+
+                        var result = await FilePicker.Default.PickAsync(options);
+                        if (result != null)
+                        {
+                            stream.SoundFilePath = result.FullPath;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        await this.DisplayAlert(MainPage.ErrorTitle, $"Failed to select file: {ex.Message}", MainPage.OkButtonText);
+                    }
+                }
+            }
+        }
+
+        private void OnClearSoundFileClicked(object sender, EventArgs e)
+        {
+            if (sender is Button button && button.CommandParameter is int id)
+            {
+                var stream = this.streams.FirstOrDefault(s => s.Id == id);
+                if (stream != null)
+                {
+                    stream.SoundFilePath = null;
+                }
+            }
+        }
+
+        private void OnTestSoundClicked(object sender, EventArgs e)
+        {
+            if (sender is Button button && button.CommandParameter is int id)
+            {
+                var stream = this.streams.FirstOrDefault(s => s.Id == id);
+                if (stream != null && stream.SoundEnabled && !string.IsNullOrEmpty(stream.SoundFilePath) && File.Exists(stream.SoundFilePath))
+                {
+                    try
+                    {
+                        if (this.audioService == null)
+                        {
+                            var app = Application.Current;
+                            if (app?.Handler?.MauiContext?.Services != null)
+                            {
+                                this.audioService = app.Handler.MauiContext.Services.GetService<IAudioService>();
+                            }
+                        }
+
+                        if (this.audioService != null)
+                        {
+                            this.audioService.PlaySound(stream.SoundFilePath, stream.SoundVolume);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        this.DisplayAlert(MainPage.ErrorTitle, $"Failed to play sound: {ex.Message}", MainPage.OkButtonText);
+                    }
                 }
             }
         }
