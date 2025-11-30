@@ -183,6 +183,85 @@
                                     </VerticalStackLayout>
                                 </Border>
 
+                                <!-- Recording Settings -->
+                                <Border Stroke="DarkGray"
+                                        StrokeThickness="1"
+                                        Padding="10"
+                                        BackgroundColor="#1A1A1A">
+                                    <VerticalStackLayout Spacing="8">
+                                        <Label Text="Recording Settings"
+                                               FontAttributes="Bold"
+                                               FontSize="14"
+                                               TextColor="White"/>
+                                        
+                                        <!-- Enable Recording Toggle -->
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                            <Label Text="Enable Recording"
+                                                   FontSize="13"
+                                                   TextColor="White"
+                                                   VerticalOptions="Center"/>
+                                            <Switch Grid.Column="1"
+                                                    IsToggled="{Binding RecordingEnabled}"
+                                                    Toggled="OnRecordingEnabledToggled"/>
+                                        </Grid>
+
+                                        <!-- Output Formats -->
+                                        <VerticalStackLayout Spacing="5" IsVisible="{Binding RecordingEnabled}">
+                                            <Label Text="Output Formats:"
+                                                   FontSize="13"
+                                                   TextColor="White"/>
+                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                                <CheckBox Grid.Column="0"
+                                                          IsChecked="{Binding RecordingGif}"
+                                                          CheckedChanged="OnRecordingFormatChanged"/>
+                                                <Label Grid.Column="0"
+                                                       Text="GIF"
+                                                       FontSize="12"
+                                                       TextColor="White"
+                                                       VerticalOptions="Center"
+                                                       Margin="25,0,0,0"/>
+
+                                                <CheckBox Grid.Column="1"
+                                                          IsChecked="{Binding RecordingPng}"
+                                                          CheckedChanged="OnRecordingFormatChanged"/>
+                                                <Label Grid.Column="1"
+                                                       Text="PNG"
+                                                       FontSize="12"
+                                                       TextColor="White"
+                                                       VerticalOptions="Center"
+                                                       Margin="25,0,0,0"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                                <CheckBox Grid.Column="0"
+                                                          IsChecked="{Binding RecordingMp4}"
+                                                          CheckedChanged="OnRecordingFormatChanged"/>
+                                                <Label Grid.Column="0"
+                                                       Text="MP4"
+                                                       FontSize="12"
+                                                       TextColor="White"
+                                                       VerticalOptions="Center"
+                                                       Margin="25,0,0,0"/>
+                                            </Grid>
+                                        </VerticalStackLayout>
+
+                                        <!-- Output Path -->
+                                        <VerticalStackLayout Spacing="5" IsVisible="{Binding RecordingEnabled}">
+                                            <Label Text="Output Path:"
+                                                   FontSize="13"
+                                                   TextColor="White"/>
+                                            <Label Text="{Binding RecordingOutputPath, StringFormat='{0}'}"
+                                                   FontSize="11"
+                                                   TextColor="LightGray"
+                                                   LineBreakMode="TailTruncation"/>
+                                            <Button Text="Select Output Folder"
+                                                    Clicked="OnSelectOutputFolderClicked"
+                                                    CommandParameter="{Binding Id}"
+                                                    FontSize="12"
+                                                    Padding="5"/>
+                                        </VerticalStackLayout>
+                                    </VerticalStackLayout>
+                                </Border>
+
                                 <!-- Metrics -->
                                 <HorizontalStackLayout Spacing="20">
                                     <Label Text="{Binding Metrics}"

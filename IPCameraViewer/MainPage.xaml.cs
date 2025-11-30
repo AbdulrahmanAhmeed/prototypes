@@ -6,6 +6,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using Microsoft.Maui.Storage;
 using Microsoft.Extensions.DependencyInjection;
+using System.IO;
 
 namespace IPCameraViewer
 {
@@ -36,6 +37,7 @@ namespace IPCameraViewer
 		private readonly ObservableCollection<CameraStreamViewModel> streams = new();
 		private int streamIdCounter = 0;
 		private IAudioService? audioService;
+		private readonly DetectionRecorder detectionRecorder = new();
 		private const string DebugPlayMotionSoundCalled = "PlayMotionSound: Called";
 		private const string DebugAudioServiceNull = "PlayMotionSound: audioService is null, attempting to resolve";
 		private const string DebugServiceResolved = "PlayMotionSound: Service resolved: {0}";
@@ -191,6 +193,12 @@ namespace IPCameraViewer
             streamer.MotionDetected += () => this.OnMotion(streamViewModel);
             streamer.Error += (message) => this.OnError(streamViewModel, message);
 
+            // Initialize frame buffer if recording is enabled (5 seconds before detection)
+            if (streamViewModel.RecordingEnabled)
+            {
+                streamViewModel.FrameBuffer = new FrameBuffer(5, estimatedFps: 15);
+            }
+
             streamViewModel.Streamer = streamer;
             streamViewModel.IsRunning = true;
             streamer.Start(streamViewModel.Url);
@@ -222,6 +230,35 @@ namespace IPCameraViewer
 
         private void OnFrameReceived(CameraStreamViewModel streamViewModel, byte[] jpegBytes)
         {
+            long timestampMs = Environment.TickCount64;
+
+            // Add to frame buffer if recording is enabled
+            if (streamViewModel.RecordingEnabled && streamViewModel.FrameBuffer != null)
+            {
+                streamViewModel.FrameBuffer.AddFrame(jpegBytes, timestampMs);
+            }
+
+            // Add to recording frames if currently recording
+            if (streamViewModel.IsRecording)
+            {
+                streamViewModel.RecordingFrames.Add(new FrameData
+                {
+                    JpegBytes = jpegBytes,
+                    TimestampMs = timestampMs
+                });
+                
+                // Log every frame during recording to debug the issue
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] Frame added! Total: {streamViewModel.RecordingFrames.Count}, IsRecording: {streamViewModel.IsRecording}");
+            }
+            else
+            {
+                // Debug: Log when frames are NOT being added
+                if (streamViewModel.RecordingEnabled)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[RECORDING] Frame NOT added - IsRecording is FALSE");
+                }
+            }
+
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 streamViewModel.CurrentFrame = ImageSource.FromStream(() => new MemoryStream(jpegBytes));
@@ -239,12 +276,14 @@ namespace IPCameraViewer
 
         private void OnMotion(CameraStreamViewModel streamViewModel)
         {
+            var detectionTime = DateTime.Now;
+            
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 streamViewModel.MotionStatus = MainPage.MotionDetectedText;
                 streamViewModel.MotionColor = Colors.OrangeRed;
 
-                var timestamp = DateTime.Now.ToString("HH:mm:ss");
+                var timestamp = detectionTime.ToString("HH:mm:ss");
                 streamViewModel.DetectionLogs.Add(string.Format(MainPage.MotionDetectedLogFormat, timestamp, streamViewModel.LastRatio));
 
                 if (streamViewModel.DetectionLogs.Count > MainPage.MaxDetectionLogs)
@@ -254,7 +293,119 @@ namespace IPCameraViewer
 
                 // Play sound if enabled
                 this.PlayMotionSound(streamViewModel);
+
+                // Start recording if enabled AND not already recording
+                if (streamViewModel.RecordingEnabled && !streamViewModel.IsRecording)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[RECORDING] Motion detected - starting new recording");
+                    this.StartRecording(streamViewModel, detectionTime);
+                }
+                else if (streamViewModel.IsRecording)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[RECORDING] Motion detected but ALREADY RECORDING - ignoring to prevent frame loss");
+                }
             });
+        }
+
+        private void StartRecording(CameraStreamViewModel streamViewModel, DateTime detectionTime)
+        {
+            System.Diagnostics.Debug.WriteLine($"[RECORDING] StartRecording called for {streamViewModel.CameraName}");
+            System.Diagnostics.Debug.WriteLine($"[RECORDING] RecordingEnabled: {streamViewModel.RecordingEnabled}");
+            System.Diagnostics.Debug.WriteLine($"[RECORDING] MP4: {streamViewModel.RecordingMp4}, GIF: {streamViewModel.RecordingGif}, PNG: {streamViewModel.RecordingPng}");
+            
+            streamViewModel.IsRecording = true;
+            streamViewModel.RecordingStartTime = detectionTime;
+            streamViewModel.RecordingFrames.Clear();
+
+            // Get frames from buffer (5 seconds before detection)
+            if (streamViewModel.FrameBuffer != null)
+            {
+                long currentTimestamp = Environment.TickCount64;
+                var bufferedFrames = streamViewModel.FrameBuffer.GetFrames(currentTimestamp, 5);
+                streamViewModel.RecordingFrames.AddRange(bufferedFrames);
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] Added {bufferedFrames.Count} buffered frames (5 seconds BEFORE detection)");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] WARNING: FrameBuffer is null!");
+            }
+
+            // Record for 10 seconds after detection
+            System.Diagnostics.Debug.WriteLine($"[RECORDING] Starting 10-second capture period (AFTER detection)...");
+            
+            // Start task to stop recording after 10 seconds
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(10 * 1000);  // 10 seconds
+                
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] 10 seconds elapsed, stopping recording...");
+                
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    if (streamViewModel.IsRecording)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[RECORDING] Total frames captured: {streamViewModel.RecordingFrames.Count}");
+                        this.StopRecording(streamViewModel, detectionTime);
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[RECORDING] WARNING: IsRecording is false, skipping StopRecording");
+                    }
+                });
+            });
+        }
+
+        private async void StopRecording(CameraStreamViewModel streamViewModel, DateTime detectionTime)
+        {
+            System.Diagnostics.Debug.WriteLine($"[RECORDING] StopRecording called");
+            System.Diagnostics.Debug.WriteLine($"[RECORDING] Final frame count: {streamViewModel.RecordingFrames.Count}");
+            
+            streamViewModel.IsRecording = false;
+
+            // Check if any format is selected
+            if (!streamViewModel.RecordingGif && !streamViewModel.RecordingPng && !streamViewModel.RecordingMp4)
+            {
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] WARNING: No output format selected! Aborting save.");
+                streamViewModel.RecordingFrames.Clear();
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[RECORDING] Formats enabled - GIF: {streamViewModel.RecordingGif}, PNG: {streamViewModel.RecordingPng}, MP4: {streamViewModel.RecordingMp4}");
+
+            // Get output directory
+            string outputDir = streamViewModel.RecordingOutputPath ?? 
+                Path.Combine(FileSystem.AppDataDirectory, "Recordings", streamViewModel.CameraName);
+
+            System.Diagnostics.Debug.WriteLine($"[RECORDING] Output directory: {outputDir}");
+
+            // IMPORTANT: Create a copy of frames BEFORE clearing, to avoid race condition
+            var framesToSave = new List<FrameData>(streamViewModel.RecordingFrames);
+            streamViewModel.RecordingFrames.Clear();  // Clear immediately so new recording can start
+            
+            System.Diagnostics.Debug.WriteLine($"[RECORDING] Created copy of {framesToSave.Count} frames for saving");
+
+            try
+            {
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] Calling SaveRecordingAsync with {framesToSave.Count} frames...");
+                
+                await this.detectionRecorder.SaveRecordingAsync(
+                    framesToSave,  // Use the copy, not the original list
+                    streamViewModel.CameraName,
+                    outputDir,
+                    5,
+                    10,
+                    streamViewModel.RecordingGif,
+                    streamViewModel.RecordingPng,
+                    streamViewModel.RecordingMp4,
+                    detectionTime);
+
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] SaveRecordingAsync completed successfully");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] ERROR saving recording: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] Stack trace: {ex.StackTrace}");
+            }
         }
 
         private void PlayMotionSound(CameraStreamViewModel streamViewModel)
@@ -449,6 +600,62 @@ namespace IPCameraViewer
                     catch (Exception ex)
                     {
                         this.DisplayAlert(MainPage.ErrorTitle, $"Failed to play sound: {ex.Message}", MainPage.OkButtonText);
+                    }
+                }
+            }
+        }
+
+        private void OnRecordingEnabledToggled(object sender, ToggledEventArgs e)
+        {
+            if (sender is Switch switchControl && switchControl.BindingContext is CameraStreamViewModel streamViewModel)
+            {
+                streamViewModel.RecordingEnabled = e.Value;
+                
+                // Initialize or clear frame buffer based on setting (5 seconds before detection)
+                if (e.Value && streamViewModel.IsRunning)
+                {
+                    streamViewModel.FrameBuffer = new FrameBuffer(5, estimatedFps: 15);
+                }
+                else if (!e.Value)
+                {
+                    streamViewModel.FrameBuffer = null;
+                }
+            }
+        }
+
+
+
+        private void OnRecordingFormatChanged(object sender, CheckedChangedEventArgs e)
+        {
+            // Format changes are handled by binding, this is just for any additional logic if needed
+        }
+
+        private async void OnSelectOutputFolderClicked(object sender, EventArgs e)
+        {
+            if (sender is Button button && button.CommandParameter is int id)
+            {
+                var stream = this.streams.FirstOrDefault(s => s.Id == id);
+                if (stream != null)
+                {
+                    try
+                    {
+                        // For folder picker, we'll use a simple approach
+                        // Note: MAUI doesn't have a built-in folder picker, so we'll use a workaround
+                        // For Windows, we can use platform-specific code, but for now we'll use a text input
+                        string? result = await this.DisplayPromptAsync(
+                            "Output Folder",
+                            "Enter the folder path for recordings:",
+                            initialValue: stream.RecordingOutputPath ?? Path.Combine(FileSystem.AppDataDirectory, "Recordings", stream.CameraName),
+                            placeholder: "Folder path");
+
+                        if (!string.IsNullOrWhiteSpace(result))
+                        {
+                            stream.RecordingOutputPath = result;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        await this.DisplayAlert(MainPage.ErrorTitle, $"Failed to set output folder: {ex.Message}", MainPage.OkButtonText);
                     }
                 }
             }
