@@ -54,7 +54,7 @@ namespace IPCameraViewer.Services
 
             if (saveMp4)
             {
-                tasks.Add(SaveAsMp4Async(frames, outputDirectory, baseFileName, beforeSeconds + afterSeconds));
+                tasks.Add(SaveAsMp4Async(frames, outputDirectory, baseFileName));
             }
 
             await Task.WhenAll(tasks);
@@ -148,7 +148,7 @@ namespace IPCameraViewer.Services
             });
         }
 
-        private async Task SaveAsMp4Async(List<FrameData> frames, string outputDirectory, string baseFileName, int totalDurationSeconds)
+        private async Task SaveAsMp4Async(List<FrameData> frames, string outputDirectory, string baseFileName)
         {
             await Task.Run(async () =>
             {
@@ -174,7 +174,7 @@ namespace IPCameraViewer.Services
                     }
 
                     // Try to use FFmpeg to create MP4
-                    bool ffmpegSuccess = await TryCreateMp4WithFfmpegAsync(tempPngDir, mp4Path, frames.Count, totalDurationSeconds);
+                    bool ffmpegSuccess = await TryCreateMp4WithFfmpegAsync(tempPngDir, mp4Path, frames.Count);
 
                     // Clean up temporary PNG files
                     try
@@ -222,17 +222,19 @@ namespace IPCameraViewer.Services
             });
         }
 
-        private async Task<bool> TryCreateMp4WithFfmpegAsync(string pngDirectory, string outputMp4Path, int frameCount, int totalDurationSeconds)
+        private async Task<bool> TryCreateMp4WithFfmpegAsync(string pngDirectory, string outputMp4Path, int frameCount)
         {
             try
             {
-                // Calculate framerate based on the actual total duration
-                double framerate = frameCount / (double)totalDurationSeconds;
+                // IMPORTANT: We want ALL videos to be exactly 15 seconds (5 before + 10 after)
+                // So framerate = frameCount / 15 seconds
+                // Example: 6 frames in 15 seconds = 0.4 FPS → 6 frames ÷ 0.4 FPS = 15 seconds
+                double framerate = frameCount / 15.0;
                 
                 // Clamp to reasonable values (minimum 0.1 FPS for very slow cameras)
                 framerate = Math.Max(0.1, Math.Min(30.0, framerate));
                 
-                System.Diagnostics.Debug.WriteLine($"[MP4] Frame count: {frameCount}, Duration: {totalDurationSeconds}s, Framerate: {framerate:F2} FPS");
+                System.Diagnostics.Debug.WriteLine($"[MP4] Frame count: {frameCount}, Framerate: {framerate:F2} FPS → Video duration: {frameCount / framerate:F1} seconds (5s before + 10s after)");
 
                 string? ffmpegExe = FindFfmpegExecutable();
                 
