@@ -78,32 +78,12 @@
 
                                 <!-- Stream Content -->
                                 <Grid ColumnDefinitions="*,300">
-                                    <Border Stroke="LightGray"
-                                            StrokeThickness="2"
-                                            Padding="0"
-                                            HorizontalOptions="Center"
-                                            VerticalOptions="Center">
-                                        <Border.Triggers>
-                                            <DataTrigger TargetType="Border"
-                                                         Binding="{Binding IsMotionHighlighted}"
-                                                         Value="True">
-                                            <Setter Property="Stroke" Value="OrangeRed"/>
-                                            <Setter Property="StrokeThickness" Value="6"/>
-                                        </DataTrigger>
-                                        <DataTrigger TargetType="Border"
-                                                     Binding="{Binding IsMotionHighlighted}"
-                                                     Value="False">
-                                            <Setter Property="Stroke" Value="LightGray"/>
-                                            <Setter Property="StrokeThickness" Value="2"/>
-                                        </DataTrigger>
-                                    </Border.Triggers>
-                                        <Image Source="{Binding CurrentFrame}"
-                                               HeightRequest="300"
-                                               WidthRequest="400"
-                                               Aspect="AspectFit"
-                                               HorizontalOptions="Center"
-                                               VerticalOptions="Center"/>
-                                    </Border>
+                                    <Image Source="{Binding CurrentFrame}"
+                                           HeightRequest="300"
+                                           WidthRequest="400"
+                                           Aspect="AspectFit"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center"/>
 
                                     <VerticalStackLayout Grid.Column="1" Spacing="8" Padding="10,0,0,0">
                                         <Label Text="Detections" FontAttributes="Bold" TextColor="White"/>
