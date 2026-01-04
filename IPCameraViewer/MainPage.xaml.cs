@@ -38,8 +38,6 @@ namespace IPCameraViewer
 		private int streamIdCounter = 0;
 		private IAudioService? audioService;
 		private readonly DetectionRecorder detectionRecorder = new();
-        private readonly SettingsService settingsService = new();
-
 		private const string DebugPlayMotionSoundCalled = "PlayMotionSound: Called";
 		private const string DebugAudioServiceNull = "PlayMotionSound: audioService is null, attempting to resolve";
 		private const string DebugServiceResolved = "PlayMotionSound: Service resolved: {0}";
@@ -58,9 +56,6 @@ namespace IPCameraViewer
             InitializeComponent();
             this.StreamsCollection.ItemsSource = this.streams;
             
-            // Load settings
-            this.LoadSettings();
-
             // Try to get audio service after initialization
             try
             {
@@ -74,31 +69,6 @@ namespace IPCameraViewer
             {
                 // audioService will remain null if it can't be resolved
             }
-        }
-
-        private void LoadSettings()
-        {
-            this.settingsService.LoadSettings();
-            foreach (var cameraSettings in this.settingsService.Settings.Cameras)
-            {
-                var vm = new CameraStreamViewModel(cameraSettings)
-                {
-                    OnSettingsChanged = this.SaveSettings
-                };
-                this.streams.Add(vm);
-                this.StartStream(vm);
-            }
-
-            if (this.streams.Any())
-            {
-                this.streamIdCounter = this.streams.Max(s => s.Id) + 1;
-            }
-        }
-
-        private void SaveSettings()
-        {
-            this.settingsService.Settings.Cameras = this.streams.Select(s => s.ToSettings()).ToList();
-            this.settingsService.SaveSettings();
         }
 
         private void OnAddStreamClicked(object sender, EventArgs e)
@@ -120,12 +90,10 @@ namespace IPCameraViewer
                     {
                         Id = this.streamIdCounter++,
                         CameraName = cameraName,
-                        Url = cameraUrl,
-                        OnSettingsChanged = this.SaveSettings
+                        Url = cameraUrl
                     };
 
                     this.streams.Add(streamViewModel);
-                    this.SaveSettings(); // Save immediately after adding
                     this.StartStream(streamViewModel);
 
                     // Clear inputs
@@ -154,7 +122,6 @@ namespace IPCameraViewer
                 {
                     this.StopStream(stream);
                     this.streams.Remove(stream);
-                    this.SaveSettings(); // Save immediately after removing
                     this.UpdateStatus(string.Format(MainPage.RemovedStreamFormat, stream.CameraName));
                 }
             }
@@ -226,10 +193,10 @@ namespace IPCameraViewer
             streamer.MotionDetected += () => this.OnMotion(streamViewModel);
             streamer.Error += (message) => this.OnError(streamViewModel, message);
 
-            // Initialize frame buffer if recording is enabled (uses camera-specific duration)
+            // Initialize frame buffer if recording is enabled (5 seconds before detection)
             if (streamViewModel.RecordingEnabled)
             {
-                streamViewModel.FrameBuffer = new FrameBuffer(streamViewModel.RecordingBeforeSeconds, estimatedFps: 15);
+                streamViewModel.FrameBuffer = new FrameBuffer(5, estimatedFps: 15);
             }
 
             streamViewModel.Streamer = streamer;
@@ -350,29 +317,28 @@ namespace IPCameraViewer
             streamViewModel.RecordingStartTime = detectionTime;
             streamViewModel.RecordingFrames.Clear();
 
-            // Get frames from buffer (uses camera-specific duration before detection)
+            // Get frames from buffer (5 seconds before detection)
             if (streamViewModel.FrameBuffer != null)
             {
                 long currentTimestamp = Environment.TickCount64;
-                var bufferedFrames = streamViewModel.FrameBuffer.GetFrames(currentTimestamp, streamViewModel.RecordingBeforeSeconds);
+                var bufferedFrames = streamViewModel.FrameBuffer.GetFrames(currentTimestamp, 5);
                 streamViewModel.RecordingFrames.AddRange(bufferedFrames);
-                System.Diagnostics.Debug.WriteLine($"[RECORDING] Added {bufferedFrames.Count} buffered frames ({streamViewModel.RecordingBeforeSeconds} seconds BEFORE detection)");
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] Added {bufferedFrames.Count} buffered frames (5 seconds BEFORE detection)");
             }
             else
             {
                 System.Diagnostics.Debug.WriteLine($"[RECORDING] WARNING: FrameBuffer is null!");
             }
 
-            // Record for the configured duration after detection
-            int afterSeconds = streamViewModel.RecordingAfterSeconds;
-            System.Diagnostics.Debug.WriteLine($"[RECORDING] Starting {afterSeconds}-second capture period (AFTER detection)...");
+            // Record for 10 seconds after detection
+            System.Diagnostics.Debug.WriteLine($"[RECORDING] Starting 10-second capture period (AFTER detection)...");
             
-            // Start task to stop recording after the configured duration
+            // Start task to stop recording after 10 seconds
             _ = Task.Run(async () =>
             {
-                await Task.Delay(afterSeconds * 1000);
+                await Task.Delay(10 * 1000);  // 10 seconds
                 
-                System.Diagnostics.Debug.WriteLine($"[RECORDING] {afterSeconds} seconds elapsed, stopping recording...");
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] 10 seconds elapsed, stopping recording...");
                 
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
@@ -426,8 +392,8 @@ namespace IPCameraViewer
                     framesToSave,  // Use the copy, not the original list
                     streamViewModel.CameraName,
                     outputDir,
-                    streamViewModel.RecordingBeforeSeconds,
-                    streamViewModel.RecordingAfterSeconds,
+                    5,
+                    10,
                     streamViewModel.RecordingGif,
                     streamViewModel.RecordingPng,
                     streamViewModel.RecordingMp4,
@@ -645,10 +611,10 @@ namespace IPCameraViewer
             {
                 streamViewModel.RecordingEnabled = e.Value;
                 
-                // Initialize or clear frame buffer based on setting (uses camera-specific duration)
+                // Initialize or clear frame buffer based on setting (5 seconds before detection)
                 if (e.Value && streamViewModel.IsRunning)
                 {
-                    streamViewModel.FrameBuffer = new FrameBuffer(streamViewModel.RecordingBeforeSeconds, estimatedFps: 15);
+                    streamViewModel.FrameBuffer = new FrameBuffer(5, estimatedFps: 15);
                 }
                 else if (!e.Value)
                 {
@@ -662,42 +628,6 @@ namespace IPCameraViewer
         private void OnRecordingFormatChanged(object sender, CheckedChangedEventArgs e)
         {
             // Format changes are handled by binding, this is just for any additional logic if needed
-        }
-
-        private void OnRecordingBeforeDurationChanged(object sender, ValueChangedEventArgs e)
-        {
-            if (sender is Slider slider && slider.BindingContext is CameraStreamViewModel streamViewModel)
-            {
-                // Update the view model property only if it actually changed
-                int newDuration = (int)e.NewValue;
-                if (streamViewModel.RecordingBeforeSeconds != newDuration)
-                {
-                    streamViewModel.RecordingBeforeSeconds = newDuration;
-
-                    // If recording is enabled, we need to update the frame buffer size
-                    if (streamViewModel.RecordingEnabled && streamViewModel.IsRunning)
-                    {
-                        // Recreate buffer with new duration
-                        // Note: This will clear existing buffered frames, but ensures correct duration going forward
-                        streamViewModel.FrameBuffer = new FrameBuffer(newDuration, estimatedFps: 15);
-                        System.Diagnostics.Debug.WriteLine($"[RECORDING] Updated buffer duration to {newDuration} seconds");
-                    }
-                }
-            }
-        }
-
-        private void OnRecordingAfterDurationChanged(object sender, ValueChangedEventArgs e)
-        {
-            if (sender is Slider slider && slider.BindingContext is CameraStreamViewModel streamViewModel)
-            {
-                // Update the view model property only if it actually changed
-                int newDuration = (int)e.NewValue;
-                if (streamViewModel.RecordingAfterSeconds != newDuration)
-                {
-                    streamViewModel.RecordingAfterSeconds = newDuration;
-                    System.Diagnostics.Debug.WriteLine($"[RECORDING] Updated recording duration to {newDuration} seconds");
-                }
-            }
         }
 
         private async void OnSelectOutputFolderClicked(object sender, EventArgs e)
