@@ -78,12 +78,32 @@
 
                                 <!-- Stream Content -->
                                 <Grid ColumnDefinitions="*,300">
-                                    <Image Source="{Binding CurrentFrame}"
-                                           HeightRequest="300"
-                                           WidthRequest="400"
-                                           Aspect="AspectFit"
-                                           HorizontalOptions="Center"
-                                           VerticalOptions="Center"/>
+                                    <Border Stroke="LightGray"
+                                            StrokeThickness="2"
+                                            Padding="0"
+                                            HorizontalOptions="Center"
+                                            VerticalOptions="Center">
+                                        <Border.Triggers>
+                                            <DataTrigger TargetType="Border"
+                                                         Binding="{Binding IsMotionHighlighted}"
+                                                         Value="True">
+                                            <Setter Property="Stroke" Value="OrangeRed"/>
+                                            <Setter Property="StrokeThickness" Value="6"/>
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="Border"
+                                                     Binding="{Binding IsMotionHighlighted}"
+                                                     Value="False">
+                                            <Setter Property="Stroke" Value="LightGray"/>
+                                            <Setter Property="StrokeThickness" Value="2"/>
+                                        </DataTrigger>
+                                    </Border.Triggers>
+                                        <Image Source="{Binding CurrentFrame}"
+                                               HeightRequest="300"
+                                               WidthRequest="400"
+                                               Aspect="AspectFit"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center"/>
+                                    </Border>
 
                                     <VerticalStackLayout Grid.Column="1" Spacing="8" Padding="10,0,0,0">
                                         <Label Text="Detections" FontAttributes="Bold" TextColor="White"/>
@@ -258,6 +278,27 @@
                                                     CommandParameter="{Binding Id}"
                                                     FontSize="12"
                                                     Padding="5"/>
+                                        </VerticalStackLayout>
+
+                                        <!-- Recording Duration Settings -->
+                                        <VerticalStackLayout Spacing="5" IsVisible="{Binding RecordingEnabled}">
+                                            <Label Text="{Binding RecordingBeforeSeconds, StringFormat='Record Before Detection: {0} seconds'}"
+                                                   FontSize="13"
+                                                   TextColor="White"/>
+                                            <Slider Minimum="1"
+                                                    Maximum="30"
+                                                    Value="{Binding RecordingBeforeSeconds, Mode=OneWay}"
+                                                    ValueChanged="OnRecordingBeforeDurationChanged"/>
+                                        </VerticalStackLayout>
+
+                                        <VerticalStackLayout Spacing="5" IsVisible="{Binding RecordingEnabled}">
+                                            <Label Text="{Binding RecordingAfterSeconds, StringFormat='Record After Detection: {0} seconds'}"
+                                                   FontSize="13"
+                                                   TextColor="White"/>
+                                            <Slider Minimum="1"
+                                                    Maximum="60"
+                                                    Value="{Binding RecordingAfterSeconds, Mode=OneWay}"
+                                                    ValueChanged="OnRecordingAfterDurationChanged"/>
                                         </VerticalStackLayout>
                                     </VerticalStackLayout>
                                 </Border>

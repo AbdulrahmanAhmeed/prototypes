@@ -29,6 +29,7 @@ namespace IPCameraViewer
 		private const string StreamErrorTitleFormat = "Stream Error - {0}";
 		private const string MetricsFormat = "Metrics: ratio={0:0.000}, changed={1}/{2}";
 		private const string MotionDetectedLogFormat = "[{0}] Motion detected (ratio={1:0.000})";
+	private const string MotionDetectedWithPlateLogFormat = "[{0}] Motion detected (ratio={1:0.000}) - Plate: {2}";
 		private const string StatusFormat = "{0} | Active streams: {1}/{2}";
 		private const string ReadyStatusText = "Ready";
 		private const string EmptyString = "";
@@ -38,6 +39,10 @@ namespace IPCameraViewer
 		private int streamIdCounter = 0;
 		private IAudioService? audioService;
 		private readonly DetectionRecorder detectionRecorder = new();
+        private readonly SettingsService settingsService = new();
+	private readonly LicensePlateRecognitionService plateRecognitionService = new();
+	private AnprService? anprService; // New OpenCV + Tesseract ANPR
+
 		private const string DebugPlayMotionSoundCalled = "PlayMotionSound: Called";
 		private const string DebugAudioServiceNull = "PlayMotionSound: audioService is null, attempting to resolve";
 		private const string DebugServiceResolved = "PlayMotionSound: Service resolved: {0}";
@@ -56,19 +61,48 @@ namespace IPCameraViewer
             InitializeComponent();
             this.StreamsCollection.ItemsSource = this.streams;
             
-            // Try to get audio service after initialization
+            // Load settings
+            this.LoadSettings();
+
+            // Try to get services after initialization
             try
             {
                 var app = Application.Current;
                 if (app?.Handler?.MauiContext?.Services != null)
                 {
                     this.audioService = app.Handler.MauiContext.Services.GetService<IAudioService>();
+                    this.anprService = app.Handler.MauiContext.Services.GetService<AnprService>();
                 }
             }
             catch
             {
-                // audioService will remain null if it can't be resolved
+                // Services will remain null if they can't be resolved
             }
+        }
+
+        private void LoadSettings()
+        {
+            this.settingsService.LoadSettings();
+            foreach (var cameraSettings in this.settingsService.Settings.Cameras)
+            {
+                var vm = new CameraStreamViewModel(cameraSettings)
+                {
+                    OnSettingsChanged = this.SaveSettings
+                };
+                this.streams.Add(vm);
+                this.StartStream(vm);
+            }
+
+            if (this.streams.Any())
+            {
+                this.streamIdCounter = this.streams.Max(s => s.Id) + 1;
+            }
+        }
+
+        private void SaveSettings()
+        {
+            this.settingsService.Settings.Cameras = this.streams.Select(s => s.ToSettings()).ToList();
+            this.settingsService.SaveSettings();
         }
 
         private void OnAddStreamClicked(object sender, EventArgs e)
@@ -90,10 +124,12 @@ namespace IPCameraViewer
                     {
                         Id = this.streamIdCounter++,
                         CameraName = cameraName,
-                        Url = cameraUrl
+                        Url = cameraUrl,
+                        OnSettingsChanged = this.SaveSettings
                     };
 
                     this.streams.Add(streamViewModel);
+                    this.SaveSettings(); // Save immediately after adding
                     this.StartStream(streamViewModel);
 
                     // Clear inputs
@@ -122,6 +158,7 @@ namespace IPCameraViewer
                 {
                     this.StopStream(stream);
                     this.streams.Remove(stream);
+                    this.SaveSettings(); // Save immediately after removing
                     this.UpdateStatus(string.Format(MainPage.RemovedStreamFormat, stream.CameraName));
                 }
             }
@@ -154,6 +191,9 @@ namespace IPCameraViewer
             {
                 this.StopStream(stream);
             }
+            
+            // Dispose OCR service
+            // this.plateRecognitionService?.Dispose();
             this.UpdateStatus(MainPage.AllStreamsStoppedText);
         }
 
@@ -193,10 +233,10 @@ namespace IPCameraViewer
             streamer.MotionDetected += () => this.OnMotion(streamViewModel);
             streamer.Error += (message) => this.OnError(streamViewModel, message);
 
-            // Initialize frame buffer if recording is enabled (5 seconds before detection)
+            // Initialize frame buffer if recording is enabled (uses camera-specific duration)
             if (streamViewModel.RecordingEnabled)
             {
-                streamViewModel.FrameBuffer = new FrameBuffer(5, estimatedFps: 15);
+                streamViewModel.FrameBuffer = new FrameBuffer(streamViewModel.RecordingBeforeSeconds, estimatedFps: 15);
             }
 
             streamViewModel.Streamer = streamer;
@@ -231,6 +271,9 @@ namespace IPCameraViewer
         private void OnFrameReceived(CameraStreamViewModel streamViewModel, byte[] jpegBytes)
         {
             long timestampMs = Environment.TickCount64;
+
+            // Store current frame bytes for OCR processing
+            streamViewModel.CurrentFrameBytes = jpegBytes;
 
             // Add to frame buffer if recording is enabled
             if (streamViewModel.RecordingEnabled && streamViewModel.FrameBuffer != null)
@@ -274,17 +317,104 @@ namespace IPCameraViewer
             });
         }
 
-        private void OnMotion(CameraStreamViewModel streamViewModel)
+        private async void OnMotion(CameraStreamViewModel streamViewModel)
         {
             var detectionTime = DateTime.Now;
+
+            // Try to recognize license plate from the current frame using new ANPR service
+            string? plateNumber = null;
+            double confidence = 0.0;
+            bool isDuplicate = false;
+            
+            if (streamViewModel.CurrentFrameBytes != null && this.anprService != null)
+            {
+                try
+                {
+                    System.Diagnostics.Debug.WriteLine("[ANPR] 🚀 Starting ANPR detection...");
+                    var result = await this.anprService.RecognizePlateAsync(streamViewModel.CurrentFrameBytes);
+                    
+                    if (result != null && !string.IsNullOrEmpty(result.PlateNumber))
+                    {
+                        plateNumber = result.PlateNumber;
+                        confidence = result.Confidence;
+                        isDuplicate = result.IsDuplicate;
+                        
+                        System.Diagnostics.Debug.WriteLine($"[ANPR] ✅ Plate detected: {plateNumber} (Conf: {confidence:P0}, Dup: {isDuplicate})");
+                        
+                        // Update ViewModel with plate detection info (only if not a duplicate)
+                        if (!isDuplicate)
+                        {
+                            MainThread.BeginInvokeOnMainThread(() =>
+                            {
+                                streamViewModel.LastDetectedPlate = plateNumber;
+                                streamViewModel.LastPlateConfidence = confidence;
+                                streamViewModel.LastPlateTime = detectionTime;
+                                
+                                // Add to recent plates collection
+                                var plateDetection = new PlateDetection
+                                {
+                                    PlateNumber = plateNumber,
+                                    Confidence = confidence,
+                                    DetectedAt = detectionTime,
+                                    CameraName = streamViewModel.CameraName
+                                };
+                                streamViewModel.RecentPlates.Insert(0, plateDetection);
+                                
+                                // Keep only last 10 detections
+                                while (streamViewModel.RecentPlates.Count > 10)
+                                {
+                                    streamViewModel.RecentPlates.RemoveAt(streamViewModel.RecentPlates.Count - 1);
+                                }
+                            });
+                        }
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine("[ANPR] ⚠️ No plate detected");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ANPR] ❌ Error recognizing plate: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"[ANPR] Stack trace: {ex.StackTrace}");
+                }
+            }
+            else if (this.anprService == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[ANPR] ⚠️ ANPR service not initialized");
+            }
             
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 streamViewModel.MotionStatus = MainPage.MotionDetectedText;
                 streamViewModel.MotionColor = Colors.OrangeRed;
 
+                // 🔥 Highlight the camera border
+                streamViewModel.IsMotionHighlighted = true;
+                System.Diagnostics.Debug.WriteLine($"[HIGHLIGHT] Camera '{streamViewModel.CameraName}' highlighted");
+
+                // Auto-clear highlight after 3 seconds
+                Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        streamViewModel.IsMotionHighlighted = false;
+                        System.Diagnostics.Debug.WriteLine($"[HIGHLIGHT] Camera '{streamViewModel.CameraName}' highlight cleared");
+                    });
+                });
+
                 var timestamp = detectionTime.ToString("HH:mm:ss");
-                streamViewModel.DetectionLogs.Add(string.Format(MainPage.MotionDetectedLogFormat, timestamp, streamViewModel.LastRatio));
+                
+                // Add log with plate number if detected and not a duplicate
+                if (!string.IsNullOrEmpty(plateNumber) && !isDuplicate)
+                {
+                    streamViewModel.DetectionLogs.Add(string.Format(MainPage.MotionDetectedWithPlateLogFormat, timestamp, streamViewModel.LastRatio, plateNumber));
+                }
+                else
+                {
+                    streamViewModel.DetectionLogs.Add(string.Format(MainPage.MotionDetectedLogFormat, timestamp, streamViewModel.LastRatio));
+                }
 
                 if (streamViewModel.DetectionLogs.Count > MainPage.MaxDetectionLogs)
                 {
@@ -298,7 +428,7 @@ namespace IPCameraViewer
                 if (streamViewModel.RecordingEnabled && !streamViewModel.IsRecording)
                 {
                     System.Diagnostics.Debug.WriteLine($"[RECORDING] Motion detected - starting new recording");
-                    this.StartRecording(streamViewModel, detectionTime);
+                    this.StartRecording(streamViewModel, detectionTime, plateNumber);
                 }
                 else if (streamViewModel.IsRecording)
                 {
@@ -307,45 +437,50 @@ namespace IPCameraViewer
             });
         }
 
-        private void StartRecording(CameraStreamViewModel streamViewModel, DateTime detectionTime)
+        private void StartRecording(CameraStreamViewModel streamViewModel, DateTime detectionTime, string? plateNumber = null)
         {
             System.Diagnostics.Debug.WriteLine($"[RECORDING] StartRecording called for {streamViewModel.CameraName}");
             System.Diagnostics.Debug.WriteLine($"[RECORDING] RecordingEnabled: {streamViewModel.RecordingEnabled}");
             System.Diagnostics.Debug.WriteLine($"[RECORDING] MP4: {streamViewModel.RecordingMp4}, GIF: {streamViewModel.RecordingGif}, PNG: {streamViewModel.RecordingPng}");
+            if (!string.IsNullOrEmpty(plateNumber))
+            {
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] Plate Number: {plateNumber}");
+            }
             
             streamViewModel.IsRecording = true;
             streamViewModel.RecordingStartTime = detectionTime;
             streamViewModel.RecordingFrames.Clear();
 
-            // Get frames from buffer (5 seconds before detection)
+            // Get frames from buffer (uses camera-specific duration before detection)
             if (streamViewModel.FrameBuffer != null)
             {
                 long currentTimestamp = Environment.TickCount64;
-                var bufferedFrames = streamViewModel.FrameBuffer.GetFrames(currentTimestamp, 5);
+                var bufferedFrames = streamViewModel.FrameBuffer.GetFrames(currentTimestamp, streamViewModel.RecordingBeforeSeconds);
                 streamViewModel.RecordingFrames.AddRange(bufferedFrames);
-                System.Diagnostics.Debug.WriteLine($"[RECORDING] Added {bufferedFrames.Count} buffered frames (5 seconds BEFORE detection)");
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] Added {bufferedFrames.Count} buffered frames ({streamViewModel.RecordingBeforeSeconds} seconds BEFORE detection)");
             }
             else
             {
                 System.Diagnostics.Debug.WriteLine($"[RECORDING] WARNING: FrameBuffer is null!");
             }
 
-            // Record for 10 seconds after detection
-            System.Diagnostics.Debug.WriteLine($"[RECORDING] Starting 10-second capture period (AFTER detection)...");
+            // Record for the configured duration after detection
+            int afterSeconds = streamViewModel.RecordingAfterSeconds;
+            System.Diagnostics.Debug.WriteLine($"[RECORDING] Starting {afterSeconds}-second capture period (AFTER detection)...");
             
-            // Start task to stop recording after 10 seconds
+            // Start task to stop recording after the configured duration
             _ = Task.Run(async () =>
             {
-                await Task.Delay(10 * 1000);  // 10 seconds
+                await Task.Delay(afterSeconds * 1000);
                 
-                System.Diagnostics.Debug.WriteLine($"[RECORDING] 10 seconds elapsed, stopping recording...");
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] {afterSeconds} seconds elapsed, stopping recording...");
                 
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
                     if (streamViewModel.IsRecording)
                     {
                         System.Diagnostics.Debug.WriteLine($"[RECORDING] Total frames captured: {streamViewModel.RecordingFrames.Count}");
-                        this.StopRecording(streamViewModel, detectionTime);
+                        this.StopRecording(streamViewModel, detectionTime, plateNumber);
                     }
                     else
                     {
@@ -355,10 +490,14 @@ namespace IPCameraViewer
             });
         }
 
-        private async void StopRecording(CameraStreamViewModel streamViewModel, DateTime detectionTime)
+        private async void StopRecording(CameraStreamViewModel streamViewModel, DateTime detectionTime, string? plateNumber = null)
         {
             System.Diagnostics.Debug.WriteLine($"[RECORDING] StopRecording called");
             System.Diagnostics.Debug.WriteLine($"[RECORDING] Final frame count: {streamViewModel.RecordingFrames.Count}");
+            if (!string.IsNullOrEmpty(plateNumber))
+            {
+                System.Diagnostics.Debug.WriteLine($"[RECORDING] Plate Number: {plateNumber}");
+            }
             
             streamViewModel.IsRecording = false;
 
@@ -392,12 +531,13 @@ namespace IPCameraViewer
                     framesToSave,  // Use the copy, not the original list
                     streamViewModel.CameraName,
                     outputDir,
-                    5,
-                    10,
+                    streamViewModel.RecordingBeforeSeconds,
+                    streamViewModel.RecordingAfterSeconds,
                     streamViewModel.RecordingGif,
                     streamViewModel.RecordingPng,
                     streamViewModel.RecordingMp4,
-                    detectionTime);
+                    detectionTime,
+                    plateNumber);
 
                 System.Diagnostics.Debug.WriteLine($"[RECORDING] SaveRecordingAsync completed successfully");
             }
@@ -611,10 +751,10 @@ namespace IPCameraViewer
             {
                 streamViewModel.RecordingEnabled = e.Value;
                 
-                // Initialize or clear frame buffer based on setting (5 seconds before detection)
+                // Initialize or clear frame buffer based on setting (uses camera-specific duration)
                 if (e.Value && streamViewModel.IsRunning)
                 {
-                    streamViewModel.FrameBuffer = new FrameBuffer(5, estimatedFps: 15);
+                    streamViewModel.FrameBuffer = new FrameBuffer(streamViewModel.RecordingBeforeSeconds, estimatedFps: 15);
                 }
                 else if (!e.Value)
                 {
@@ -628,6 +768,42 @@ namespace IPCameraViewer
         private void OnRecordingFormatChanged(object sender, CheckedChangedEventArgs e)
         {
             // Format changes are handled by binding, this is just for any additional logic if needed
+        }
+
+        private void OnRecordingBeforeDurationChanged(object sender, ValueChangedEventArgs e)
+        {
+            if (sender is Slider slider && slider.BindingContext is CameraStreamViewModel streamViewModel)
+            {
+                // Update the view model property only if it actually changed
+                int newDuration = (int)e.NewValue;
+                if (streamViewModel.RecordingBeforeSeconds != newDuration)
+                {
+                    streamViewModel.RecordingBeforeSeconds = newDuration;
+
+                    // If recording is enabled, we need to update the frame buffer size
+                    if (streamViewModel.RecordingEnabled && streamViewModel.IsRunning)
+                    {
+                        // Recreate buffer with new duration
+                        // Note: This will clear existing buffered frames, but ensures correct duration going forward
+                        streamViewModel.FrameBuffer = new FrameBuffer(newDuration, estimatedFps: 15);
+                        System.Diagnostics.Debug.WriteLine($"[RECORDING] Updated buffer duration to {newDuration} seconds");
+                    }
+                }
+            }
+        }
+
+        private void OnRecordingAfterDurationChanged(object sender, ValueChangedEventArgs e)
+        {
+            if (sender is Slider slider && slider.BindingContext is CameraStreamViewModel streamViewModel)
+            {
+                // Update the view model property only if it actually changed
+                int newDuration = (int)e.NewValue;
+                if (streamViewModel.RecordingAfterSeconds != newDuration)
+                {
+                    streamViewModel.RecordingAfterSeconds = newDuration;
+                    System.Diagnostics.Debug.WriteLine($"[RECORDING] Updated recording duration to {newDuration} seconds");
+                }
+            }
         }
 
         private async void OnSelectOutputFolderClicked(object sender, EventArgs e)
@@ -668,6 +844,9 @@ namespace IPCameraViewer
             {
                 this.StopStream(stream);
             }
+            
+            // Dispose OCR service
+            // this.plateRecognitionService?.Dispose();
         }
     }
 }
