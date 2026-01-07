@@ -40,7 +40,6 @@ namespace IPCameraViewer
 		private IAudioService? audioService;
 		private readonly DetectionRecorder detectionRecorder = new();
         private readonly SettingsService settingsService = new();
-	private readonly LicensePlateRecognitionService plateRecognitionService = new();
 	private AnprService? anprService; // New OpenCV + Tesseract ANPR
 
 		private const string DebugPlayMotionSoundCalled = "PlayMotionSound: Called";
@@ -192,8 +191,6 @@ namespace IPCameraViewer
                 this.StopStream(stream);
             }
             
-            // Dispose OCR service
-            // this.plateRecognitionService?.Dispose();
             this.UpdateStatus(MainPage.AllStreamsStoppedText);
         }
 
@@ -844,9 +841,6 @@ namespace IPCameraViewer
             {
                 this.StopStream(stream);
             }
-            
-            // Dispose OCR service
-            // this.plateRecognitionService?.Dispose();
         }
     }
 }
