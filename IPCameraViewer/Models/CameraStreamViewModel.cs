@@ -258,36 +258,11 @@ namespace IPCameraViewer.Models
 
         public ObservableCollection<string> DetectionLogs { get; } = new();
 
-        // Plate recognition properties
-        private string? lastDetectedPlate;
-        private double lastPlateConfidence;
-        private DateTime? lastPlateTime;
-
-        public string? LastDetectedPlate
-        {
-            get => this.lastDetectedPlate;
-            set => this.SetProperty(ref this.lastDetectedPlate, value);
-        }
-
-        public double LastPlateConfidence
-        {
-            get => this.lastPlateConfidence;
-            set => this.SetProperty(ref this.lastPlateConfidence, value);
-        }
-
-        public DateTime? LastPlateTime
-        {
-            get => this.lastPlateTime;
-            set => this.SetProperty(ref this.lastPlateTime, value);
-        }
-
         public bool IsMotionHighlighted
         {
             get => this.isMotionHighlighted;
             set => this.SetProperty(ref this.isMotionHighlighted, value);
         }
-
-        public ObservableCollection<PlateDetection> RecentPlates { get; } = new();
 
 
         public MjpegStreamer? Streamer { get; set; }
@@ -303,7 +278,7 @@ namespace IPCameraViewer.Models
         // Lock object for thread-safe access to RecordingFrames
         public object RecordingFramesLock { get; } = new object();
         
-        // Current frame bytes for OCR processing
+        // Current frame bytes for recording
         public byte[]? CurrentFrameBytes { get; set; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
