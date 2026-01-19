@@ -3,5 +3,5 @@ bin/
 obj/
 /.vs
 
-# Markdown files
-*.md
+# # Markdown files
+# *.md
