@@ -61,7 +61,7 @@ namespace IPCameraViewer
             // Load settings
             this.LoadSettings();
 
-            // Try to get audio service after initialization
+            // Try to get services after initialization
             try
             {
                 var app = Application.Current;
@@ -72,7 +72,7 @@ namespace IPCameraViewer
             }
             catch
             {
-                // audioService will remain null if it can't be resolved
+                // Services will remain null if they can't be resolved
             }
         }
 
@@ -187,6 +187,7 @@ namespace IPCameraViewer
             {
                 this.StopStream(stream);
             }
+            
             this.UpdateStatus(MainPage.AllStreamsStoppedText);
         }
 
@@ -265,6 +266,9 @@ namespace IPCameraViewer
         {
             long timestampMs = Environment.TickCount64;
 
+            // Store current frame bytes for OCR processing
+            streamViewModel.CurrentFrameBytes = jpegBytes;
+
             // Add to frame buffer if recording is enabled
             if (streamViewModel.RecordingEnabled && streamViewModel.FrameBuffer != null)
             {
@@ -307,16 +311,33 @@ namespace IPCameraViewer
             });
         }
 
-        private void OnMotion(CameraStreamViewModel streamViewModel)
+        private async void OnMotion(CameraStreamViewModel streamViewModel)
         {
             var detectionTime = DateTime.Now;
-            
+
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 streamViewModel.MotionStatus = MainPage.MotionDetectedText;
                 streamViewModel.MotionColor = Colors.OrangeRed;
 
+                // 🔥 Highlight the camera border
+                streamViewModel.IsMotionHighlighted = true;
+                System.Diagnostics.Debug.WriteLine($"[HIGHLIGHT] Camera '{streamViewModel.CameraName}' highlighted");
+
+                // Auto-clear highlight after 3 seconds
+                Task.Run(async () =>
+                {
+                    await Task.Delay(3000);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        streamViewModel.IsMotionHighlighted = false;
+                        System.Diagnostics.Debug.WriteLine($"[HIGHLIGHT] Camera '{streamViewModel.CameraName}' highlight cleared");
+                    });
+                });
+
                 var timestamp = detectionTime.ToString("HH:mm:ss");
+                
+                // Add log entry
                 streamViewModel.DetectionLogs.Add(string.Format(MainPage.MotionDetectedLogFormat, timestamp, streamViewModel.LastRatio));
 
                 if (streamViewModel.DetectionLogs.Count > MainPage.MaxDetectionLogs)

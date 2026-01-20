@@ -40,6 +40,7 @@ namespace IPCameraViewer.Models
         private string? recordingOutputPath;
         private int recordingBeforeSeconds = CameraStreamViewModel.DefaultRecordingBeforeSeconds;
         private int recordingAfterSeconds = CameraStreamViewModel.DefaultRecordingAfterSeconds;
+        private bool isMotionHighlighted;
 
         // Callback to notify when settings change
         public Action? OnSettingsChanged { get; set; }
@@ -257,6 +258,13 @@ namespace IPCameraViewer.Models
 
         public ObservableCollection<string> DetectionLogs { get; } = new();
 
+        public bool IsMotionHighlighted
+        {
+            get => this.isMotionHighlighted;
+            set => this.SetProperty(ref this.isMotionHighlighted, value);
+        }
+
+
         public MjpegStreamer? Streamer { get; set; }
         
         // Frame buffer for recording
@@ -269,6 +277,9 @@ namespace IPCameraViewer.Models
         
         // Lock object for thread-safe access to RecordingFrames
         public object RecordingFramesLock { get; } = new object();
+        
+        // Current frame bytes for recording
+        public byte[]? CurrentFrameBytes { get; set; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
