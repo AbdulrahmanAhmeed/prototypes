@@ -2,6 +2,7 @@ using Microsoft.Maui.Controls;
 using IPCameraViewer.Services;
 using IPCameraViewer.Models;
 using System.Net.Http;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Microsoft.Maui.Storage;
@@ -57,13 +58,6 @@ namespace IPCameraViewer
         {
             InitializeComponent();
             this.StreamsListCollection.ItemsSource = this.streams;
-            this.gridCollections = new CollectionView[]
-            {
-                this.StreamsGrid1, this.StreamsGrid2, this.StreamsGrid3, this.StreamsGrid4,
-                this.StreamsGrid5, this.StreamsGrid6, this.StreamsGrid7, this.StreamsGrid8
-            };
-            foreach (var cv in this.gridCollections)
-                cv.ItemsSource = this.streams;
 
             // Load settings
             this.LoadSettings();
@@ -221,21 +215,75 @@ namespace IPCameraViewer
 
         private bool isTileView = false;
         private int gridColumnsPerRow = 3;
-        private CollectionView[]? gridCollections;
+        private readonly Dictionary<int, CollectionView> gridCollections = new();
+        private CollectionView? currentGridCollection;
+
+        private CollectionView GetOrCreateGridCollection(int columns)
+        {
+            if (!this.gridCollections.TryGetValue(columns, out var collectionView))
+            {
+                // Create new CollectionView dynamically for this column count
+                collectionView = new CollectionView
+                {
+                    SelectionMode = SelectionMode.None,
+                    ItemTemplate = (DataTemplate)this.Resources["TileTemplate"],
+                    ItemsSource = this.streams,
+                    IsVisible = false,
+                    ItemsLayout = new GridItemsLayout(columns, ItemsLayoutOrientation.Vertical)
+                    {
+                        HorizontalItemSpacing = 10,
+                        VerticalItemSpacing = 10
+                    }
+                };
+                this.gridCollections[columns] = collectionView;
+                this.GridContainer.Children.Add(collectionView);
+            }
+            return collectionView;
+        }
 
         private void ShowGridForColumns(int columns)
         {
-            if (this.gridCollections == null) return;
-            for (int i = 0; i < this.gridCollections.Length; i++)
-                this.gridCollections[i].IsVisible = (columns == i + 1);
+            // Hide current grid collection if any
+            if (this.currentGridCollection != null)
+                this.currentGridCollection.IsVisible = false;
+
+            // Get or create CollectionView for this column count and show it
+            this.currentGridCollection = this.GetOrCreateGridCollection(columns);
+            this.currentGridCollection.IsVisible = true;
         }
 
-        private void OnGridColumnsStepperValueChanged(object sender, ValueChangedEventArgs e)
+        private void OnGridColumnsEntryTextChanged(object? sender, TextChangedEventArgs e)
         {
-            this.gridColumnsPerRow = (int)Math.Round(Math.Max(1, Math.Min(8, e.NewValue)));
-            this.GridColumnsStepper.Value = this.gridColumnsPerRow;
-            this.GridColumnsLabel.Text = this.gridColumnsPerRow.ToString();
-            this.ShowGridForColumns(this.gridColumnsPerRow);
+            // Optional: validate as user types, but don't apply until they press Apply or Enter
+        }
+
+        private void OnGridColumnsEntryCompleted(object? sender, EventArgs e)
+        {
+            this.ApplyGridColumns();
+        }
+
+        private void OnGridColumnsApplyClicked(object? sender, EventArgs e)
+        {
+            this.ApplyGridColumns();
+        }
+
+        private void ApplyGridColumns()
+        {
+            if (string.IsNullOrWhiteSpace(this.GridColumnsEntry.Text))
+                return;
+
+            if (int.TryParse(this.GridColumnsEntry.Text, out int columns) && columns >= 1)
+            {
+                this.gridColumnsPerRow = columns;
+                if (this.isTileView)
+                    this.ShowGridForColumns(this.gridColumnsPerRow);
+            }
+            else
+            {
+                // Invalid input - reset to current value
+                this.GridColumnsEntry.Text = this.gridColumnsPerRow.ToString();
+                this.DisplayAlert("Invalid Input", "Please enter a valid number greater than or equal to 1.", "OK");
+            }
         }
 
         private void OnListViewClicked(object sender, EventArgs e)
@@ -259,6 +307,7 @@ namespace IPCameraViewer
                 this.StreamsListCollection.IsVisible = false;
                 this.GridContainer.IsVisible = true;
                 this.GridColumnsPanel.IsVisible = true;
+                this.GridColumnsEntry.Text = this.gridColumnsPerRow.ToString();
                 this.ListViewButton.IsEnabled = true;
                 this.GridViewButton.IsEnabled = false;
                 this.ShowGridForColumns(this.gridColumnsPerRow);

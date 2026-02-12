@@ -358,8 +358,19 @@
             <!-- Grid columns control: visible only in Grid view -->
             <HorizontalStackLayout x:Name="GridColumnsPanel" Spacing="8" IsVisible="False" VerticalOptions="Center">
                 <Label Text="Columns per row:" FontSize="14" VerticalOptions="Center"/>
-                <Stepper x:Name="GridColumnsStepper" Minimum="1" Maximum="8" Value="3" ValueChanged="OnGridColumnsStepperValueChanged"/>
-                <Label x:Name="GridColumnsLabel" Text="3" FontSize="14" FontAttributes="Bold" VerticalOptions="Center"/>
+                <Entry x:Name="GridColumnsEntry" 
+                       Text="3" 
+                       WidthRequest="80" 
+                       Keyboard="Numeric"
+                       TextChanged="OnGridColumnsEntryTextChanged"
+                       Completed="OnGridColumnsEntryCompleted"
+                       FontSize="14"
+                       VerticalOptions="Center"/>
+                <Button Text="Apply" 
+                        Clicked="OnGridColumnsApplyClicked"
+                        FontSize="12"
+                        Padding="10,5"
+                        VerticalOptions="Center"/>
             </HorizontalStackLayout>
         </VerticalStackLayout>
 
@@ -373,48 +384,8 @@
                 <LinearItemsLayout Orientation="Vertical" ItemSpacing="10"/>
             </CollectionView.ItemsLayout>
         </CollectionView>
-        <Grid Grid.Row="1" x:Name="GridContainer" IsVisible="False">
-            <CollectionView x:Name="StreamsGrid1" SelectionMode="None" ItemTemplate="{StaticResource TileTemplate}" IsVisible="False">
-                <CollectionView.ItemsLayout>
-                    <GridItemsLayout Span="1" Orientation="Vertical" HorizontalItemSpacing="10" VerticalItemSpacing="10"/>
-                </CollectionView.ItemsLayout>
-            </CollectionView>
-            <CollectionView x:Name="StreamsGrid2" SelectionMode="None" ItemTemplate="{StaticResource TileTemplate}" IsVisible="False">
-                <CollectionView.ItemsLayout>
-                    <GridItemsLayout Span="2" Orientation="Vertical" HorizontalItemSpacing="10" VerticalItemSpacing="10"/>
-                </CollectionView.ItemsLayout>
-            </CollectionView>
-            <CollectionView x:Name="StreamsGrid3" SelectionMode="None" ItemTemplate="{StaticResource TileTemplate}" IsVisible="False">
-                <CollectionView.ItemsLayout>
-                    <GridItemsLayout Span="3" Orientation="Vertical" HorizontalItemSpacing="10" VerticalItemSpacing="10"/>
-                </CollectionView.ItemsLayout>
-            </CollectionView>
-            <CollectionView x:Name="StreamsGrid4" SelectionMode="None" ItemTemplate="{StaticResource TileTemplate}" IsVisible="False">
-                <CollectionView.ItemsLayout>
-                    <GridItemsLayout Span="4" Orientation="Vertical" HorizontalItemSpacing="10" VerticalItemSpacing="10"/>
-                </CollectionView.ItemsLayout>
-            </CollectionView>
-            <CollectionView x:Name="StreamsGrid5" SelectionMode="None" ItemTemplate="{StaticResource TileTemplate}" IsVisible="False">
-                <CollectionView.ItemsLayout>
-                    <GridItemsLayout Span="5" Orientation="Vertical" HorizontalItemSpacing="10" VerticalItemSpacing="10"/>
-                </CollectionView.ItemsLayout>
-            </CollectionView>
-            <CollectionView x:Name="StreamsGrid6" SelectionMode="None" ItemTemplate="{StaticResource TileTemplate}" IsVisible="False">
-                <CollectionView.ItemsLayout>
-                    <GridItemsLayout Span="6" Orientation="Vertical" HorizontalItemSpacing="10" VerticalItemSpacing="10"/>
-                </CollectionView.ItemsLayout>
-            </CollectionView>
-            <CollectionView x:Name="StreamsGrid7" SelectionMode="None" ItemTemplate="{StaticResource TileTemplate}" IsVisible="False">
-                <CollectionView.ItemsLayout>
-                    <GridItemsLayout Span="7" Orientation="Vertical" HorizontalItemSpacing="10" VerticalItemSpacing="10"/>
-                </CollectionView.ItemsLayout>
-            </CollectionView>
-            <CollectionView x:Name="StreamsGrid8" SelectionMode="None" ItemTemplate="{StaticResource TileTemplate}" IsVisible="False">
-                <CollectionView.ItemsLayout>
-                    <GridItemsLayout Span="8" Orientation="Vertical" HorizontalItemSpacing="10" VerticalItemSpacing="10"/>
-                </CollectionView.ItemsLayout>
-            </CollectionView>
-        </Grid>
+        <!-- Grid container: CollectionViews are created dynamically in code when column count changes -->
+        <Grid Grid.Row="1" x:Name="GridContainer" IsVisible="False"/>
 
         <!-- Status Bar -->
         <Label Grid.Row="2"
