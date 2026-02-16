@@ -188,7 +188,7 @@ namespace IPCameraViewer
             {
                 this.StopStream(stream);
             }
-
+            
             this.UpdateStatus(MainPage.AllStreamsStoppedText);
         }
 
@@ -447,7 +447,7 @@ namespace IPCameraViewer
                 });
 
                 var timestamp = detectionTime.ToString("HH:mm:ss");
-
+                
                 // Add log entry
                 streamViewModel.DetectionLogs.Add(string.Format(MainPage.MotionDetectedLogFormat, timestamp, streamViewModel.LastRatio));
 
